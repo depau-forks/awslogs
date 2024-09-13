@@ -34,7 +34,6 @@ class TestAWSLogsDatetimeParse(unittest.TestCase):
     @patch("awslogs.core.boto3_client")
     @patch("awslogs.core.datetime")
     def test_parse_datetime(self, datetime_mock, botoclient):
-
         awslogs = AWSLogs()
         datetime_mock.utcnow.return_value = datetime(2015, 1, 1, 3, 0, 0, 0)
         datetime_mock.return_value = datetime(1970, 1, 1)
@@ -392,6 +391,22 @@ class TestAWSLogs(unittest.TestCase):
             "\x1b[32mAAA\x1b[0m \x1b[36mDDD\x1b[0m bar\n"
             '\x1b[32mAAA\x1b[0m \x1b[36mEEE\x1b[0m {"bar": "baz"}\n'
             "\x1b[32mAAA\x1b[0m \x1b[36mDDD\x1b[0m Hello 3 👎\n"
+        )
+        self.assertEqual(output, expected)
+        assert exit_code == 0
+
+    @patch("awslogs.core.boto3_client")
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("os.isatty", lambda fd: True)
+    @patch("sys.stdout.isatty", lambda: True)
+    def test_main_get_json(self, mock_stdout, botoclient):
+        self.set_json_logs(botoclient)
+        exit_code = main("awslogs get AAA DDD --json".split())
+        output = mock_stdout.getvalue()
+        expected = (
+            '{"awslogs": {"log_group": "AAA", "log_stream": "DDD", "timestamp": 0, "ingestion_time": 5000}, "foo": "bar"}\n'
+            '{"awslogs": {"log_group": "AAA", "log_stream": "EEE", "timestamp": 0, "ingestion_time": 5000}, "foo": {"bar": "baz"}}\n'
+            '{"awslogs": {"log_group": "AAA", "log_stream": "DDD", "timestamp": 0, "ingestion_time": 5006}, "message": "Hello 3 \\ud83d\\udc4e"}\n'
         )
         self.assertEqual(output, expected)
         assert exit_code == 0

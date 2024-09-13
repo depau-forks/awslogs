@@ -107,6 +107,7 @@ class AWSLogs(object):
             self.query_expression = jmespath.compile(self.query)
         elif self.jq is not None:
             self.query_expression = JQAdapter(jq.compile(self.jq), all=self.jq_all)
+        self.json_out = kwargs.get("json")
         self.log_group_prefix = kwargs.get("log_group_prefix")
         self.client = boto3_client(
             self.aws_profile,
@@ -201,32 +202,64 @@ class AWSLogs(object):
                     else:
                         return
 
-                output = []
-                if self.output_group_enabled:
-                    output.append(
-                        self.color(
-                            self.log_group_name.ljust(group_length, " "), "green"
-                        )
-                    )
-                if self.output_stream_enabled:
-                    output.append(
-                        self.color(
-                            event["logStreamName"].ljust(max_stream_length, " "), "cyan"
-                        )
-                    )
-                if self.output_timestamp_enabled:
-                    output.append(self.color(milis2iso(event["timestamp"]), "yellow"))
-                if self.output_ingestion_time_enabled:
-                    output.append(self.color(milis2iso(event["ingestionTime"]), "blue"))
+                if self.json_out:
+                    message = event["message"]
+                    if message[0] == "{":
+                        try:
+                            message = json.loads(event["message"])
+                        except json.JSONDecodeError:
+                            pass
+                    if self.query_expression is not None and not isinstance(message, str):
+                        # noinspection PyBroadException
+                        try:
+                            message = self.query_expression.search(message)
+                        except Exception as _:
+                            pass
 
-                message = event["message"]
-                if self.query_expression is not None and message[0] == "{":
-                    parsed = json.loads(event["message"])
-                    message = self.query_expression.search(parsed)
-                    if not isinstance(message, str):
-                        message = json.dumps(message)
-                output.append(message.rstrip())
-                print(" ".join(output))
+                    metadata = {
+                        "log_group": self.log_group_name,
+                        "log_stream": event["logStreamName"],
+                        "timestamp": event["timestamp"],
+                        "ingestion_time": event["ingestionTime"],
+                    }
+
+                    output = {
+                        "awslogs": metadata,
+                    }
+                    if isinstance(message, dict):
+                        output.update(message)
+                    else:
+                        output["message"] = message
+
+                    print(json.dumps(output))
+
+                else:
+                    output = []
+                    if self.output_group_enabled:
+                        output.append(
+                            self.color(
+                                self.log_group_name.ljust(group_length, " "), "green"
+                            )
+                        )
+                    if self.output_stream_enabled:
+                        output.append(
+                            self.color(
+                                event["logStreamName"].ljust(max_stream_length, " "), "cyan"
+                            )
+                        )
+                    if self.output_timestamp_enabled:
+                        output.append(self.color(milis2iso(event["timestamp"]), "yellow"))
+                    if self.output_ingestion_time_enabled:
+                        output.append(self.color(milis2iso(event["ingestionTime"]), "blue"))
+
+                    message = event["message"]
+                    if self.query_expression is not None and message[0] == "{":
+                        parsed = json.loads(event["message"])
+                        message = self.query_expression.search(parsed)
+                        if not isinstance(message, str):
+                            message = json.dumps(message)
+                    output.append(message.rstrip())
+                    print(" ".join(output))
 
                 try:
                     sys.stdout.flush()

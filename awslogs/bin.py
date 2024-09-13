@@ -194,6 +194,14 @@ def main(argv=None):
         help="Use all results from the jq query (by default only the first result is used)",
     )
 
+    get_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json",
+        default=False,
+        help="Output logs in JSON format for processing by other tools",
+    )
+
     # groups
     groups_parser = subparsers.add_parser("groups", description="List groups")
     groups_parser.set_defaults(func="list_groups")
