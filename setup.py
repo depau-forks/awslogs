@@ -6,6 +6,7 @@ install_requires = [
     "jmespath>=1.0.1",
     "termcolor>=2.4.0",
     "python-dateutil>=2.9.0",
+    "jq>=1.8.0",
 ]
 
 

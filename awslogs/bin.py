@@ -178,6 +178,22 @@ def main(argv=None):
         help="JMESPath query to use in filtering the response data",
     )
 
+    get_parser.add_argument(
+        "-j",
+        "--jq",
+        action="store",
+        dest="jq",
+        help="jq query to use in filtering the response data",
+    )
+
+    get_parser.add_argument(
+        "--jq-all",
+        action="store_true",
+        dest="jq_all",
+        default=False,
+        help="Use all results from the jq query (by default only the first result is used)",
+    )
+
     # groups
     groups_parser = subparsers.add_parser("groups", description="List groups")
     groups_parser.set_defaults(func="list_groups")
@@ -201,6 +217,10 @@ def main(argv=None):
 
     # Parse input
     options, _ = parser.parse_known_args(argv)
+
+    if getattr(options, "query", None) and getattr(options, "jq", None):
+        sys.stderr.write("Cannot use both --query and --jq at the same time\n")
+        return 1
 
     try:
         logs = AWSLogs(**vars(options))

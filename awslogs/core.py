@@ -1,20 +1,20 @@
+import errno
+import os
 import re
 import sys
-import os
 import time
-import errno
-from datetime import datetime, timedelta
 from collections import deque
+from datetime import datetime, timedelta
+from typing import TypeAlias
 
 import boto3
 import botocore
-from botocore.compat import json, total_seconds
-
 import jmespath
-
-from termcolor import colored
+import jq
+from botocore.compat import json, total_seconds
 from dateutil.parser import parse
 from dateutil.tz import tzutc
+from termcolor import colored
 
 from . import exceptions
 
@@ -25,12 +25,12 @@ def milis2iso(milis):
 
 
 def boto3_client(
-    aws_profile,
-    aws_access_key_id,
-    aws_secret_access_key,
-    aws_session_token,
-    aws_region,
-    aws_endpoint_url,
+        aws_profile,
+        aws_access_key_id,
+        aws_secret_access_key,
+        aws_session_token,
+        aws_region,
+        aws_endpoint_url,
 ):
     core_session = botocore.session.get_session()
     core_session.set_config_variable("profile", aws_profile)
@@ -52,8 +52,26 @@ def boto3_client(
     )
 
 
-class AWSLogs(object):
+# noinspection PyProtectedMember
+JQProgram: TypeAlias = jq._Program
+# noinspection PyProtectedMember
+JQProgramWithInput: TypeAlias = jq._ProgramWithInput
 
+
+class JQAdapter:
+    # noinspection PyShadowingBuiltins
+    def __init__(self, jq_query: JQProgram, all: bool = False):
+        self.jq = jq_query
+        self.all = all
+
+    def search(self, data):
+        j: JQProgramWithInput = self.jq.input_value(data)
+        if self.all:
+            return j.all()
+        return j.first()
+
+
+class AWSLogs(object):
     ACTIVE = 1
     EXHAUSTED = 2
     WATCH_SLEEP = 2
@@ -82,8 +100,13 @@ class AWSLogs(object):
         self.start = self.parse_datetime(kwargs.get("start"))
         self.end = self.parse_datetime(kwargs.get("end"))
         self.query = kwargs.get("query")
+        self.query_expression = None
+        self.jq = kwargs.get("jq")
+        self.jq_all = kwargs.get("jq_all")
         if self.query is not None:
             self.query_expression = jmespath.compile(self.query)
+        elif self.jq is not None:
+            self.query_expression = JQAdapter(jq.compile(self.jq), all=self.jq_all)
         self.log_group_prefix = kwargs.get("log_group_prefix")
         self.client = boto3_client(
             self.aws_profile,
@@ -197,7 +220,7 @@ class AWSLogs(object):
                     output.append(self.color(milis2iso(event["ingestionTime"]), "blue"))
 
                 message = event["message"]
-                if self.query is not None and message[0] == "{":
+                if self.query_expression is not None and message[0] == "{":
                     parsed = json.loads(event["message"])
                     message = self.query_expression.search(parsed)
                     if not isinstance(message, str):
@@ -256,7 +279,7 @@ class AWSLogs(object):
                     # no firstEventTimestamp.
                     yield stream["logStreamName"]
                 elif max(stream["firstEventTimestamp"], window_start) <= min(
-                    stream["lastIngestionTime"], window_end
+                        stream["lastIngestionTime"], window_end
                 ):
                     yield stream["logStreamName"]
 
